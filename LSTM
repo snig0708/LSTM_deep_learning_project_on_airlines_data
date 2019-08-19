@@ -1,0 +1,127 @@
+## Importing all the libraries needed
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import math
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
+
+
+# Normalize the data
+scaler = MinMaxScaler(feature_range = (0,1))
+df = scaler.fit_transform(df)
+
+# Split the data into training and test sets
+train_size = int(len(df)*0.67)
+test_size = len(df) - train_size
+
+train, test = df[0:train_size, :], df[train_size:len(df), :]
+
+
+print("Training data size:",train_size)
+print("Test data size:", test_size)
+print("Total dataset size", len(df))
+
+#creating a new dataset: (using a function), that contains the following columns:
+## 'X' column contains the no. of passengers at time 't' , and
+## 'Y' column contains the no.of passengers at time 't+1'
+
+def create_dataset(df, look_back = 1):
+    dataX, dataY = [], []
+    for i in range(len(df) - look_back -1):
+        a = df[i:(i+look_back), 0]
+        dataX.append(a)
+        dataY.append(df[i + look_back, 0])
+    return np.array(dataX), np.array(dataY)
+
+
+
+# Reshaping training and test sets into the new dataset (using above function) with: X = t and Y = t+1
+
+look_back = 1
+trainX, trainY = create_dataset(train, look_back)
+testX, testY = create_dataset(test, look_back)
+
+
+
+##The LSTM network expects the input data (X) to be provided with a specific array structure 
+## in the form of: [samples, time steps, features]## So, we reshape the input data that we supply to LSTM into format: [samples, time steps, features]
+# ** Samples** = number of records
+# ** time steps** = number of time steps considered for prediction
+# ** features ** = number of variables/ columns being considered for time series predictions
+
+trainX = np.reshape(trainX, (trainX.shape[0], 1, trainX.shape[1]))
+testX = np.reshape(testX, (testX.shape[0], 1 , testX.shape[1]))
+
+## Create and fit the LSTM network
+
+model = Sequential()
+model.add(LSTM(4,input_shape=(1,look_back)))
+model.add(Dense(1))
+model.compile(loss = "mean_squared_error", optimizer = "adam")
+model.fit(trainX, trainY, epochs = 100, batch_size = 1, verbose = 2)
+
+
+# This network has: 1 input and an output layer that makes single 
+# 4 LSTM blocks(memory blocks)
+# activation function : sigmoid (default), epochs : 100 , batch size = 1
+
+
+
+## Make predictions
+trainPredict = model.predict(trainX)
+testPredict = model.predict(testX)
+
+#invert predictions....
+# Note that we invert the predictions before calculating error scores to ensure that performance is reported '
+# in the same units as the original data (thousands of passengers per month)
+
+trainPredict = scaler.inverse_transform(trainPredict)
+trainY = scaler.inverse_transform([trainY])
+
+testPredict = scaler.inverse_transform(testPredict)
+testY = scaler.inverse_transform([testY])
+
+
+## calculate root mean squared error (RMSE)
+trainScore = math.sqrt(mean_squared_error(trainY[0], trainPredict[:,0]))
+print('Train Score: %.2f RMSE' % (trainScore))
+testScore = math.sqrt(mean_squared_error(testY[0], testPredict[:,0]))
+print('Test Score: %.2f RMSE' % (testScore))
+
+
+# shift train predictions for plotting
+trainPredictPlot = np.empty_like(df)
+trainPredictPlot[:, :] = np.nan
+trainPredictPlot[look_back:len(trainPredict)+look_back, :] = trainPredict
+# shift test predictions for plotting
+testPredictPlot = np.empty_like(df)
+testPredictPlot[:, :] = np.nan
+testPredictPlot[len(trainPredict)+(look_back*2)+1:len(df)-1, :] = testPredict
+# plot baseline and predictions
+plt.plot(scaler.inverse_transform(df))
+plt.plot(trainPredictPlot)
+plt.plot(testPredictPlot)
+plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
